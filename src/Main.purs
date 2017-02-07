@@ -4,11 +4,11 @@ import Prelude hiding (append)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Console (CONSOLE, log)
 import Control.Monad.Eff.JQuery (JQuery, JQueryEvent,
-  on, append, css, create,appendText,
+  on, append, css, create, appendText,
   body, ready, setText, getValue)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Exception (EXCEPTION)
-import Control.Monad.Aff (launchAff)
+import Control.Monad.Aff (Canceler, launchAff)
 import Data.Foldable (for_)
 import Control.Monad.Except (runExcept)
 import Data.Either (Either(..))
@@ -18,23 +18,50 @@ import Partial.Unsafe (unsafePartial)
 import Network.HTTP.Affjax (AJAX, affjax, defaultRequest)
 import Data.Foreign.Class (read)
 
-{-
-main = launchAff $ do
+sendDataOnServer :: forall eff.Eff (
+        "err" :: EXCEPTION
+        , "ajax" :: AJAX
+        , "console" :: CONSOLE
+        | eff
+        )
+        (Canceler
+           ( "ajax" :: AJAX
+           , "console" :: CONSOLE
+           | eff
+           )
+        )
+sendDataOnServer = launchAff $ do
   res <- affjax $ defaultRequest { url = "http://ip.jsontest.com/", method = Left GET }
   liftEff $ log $ "GET /api response2: " <> res.response
--}
 
-main :: forall eff. Eff ( dom :: DOM
-                        , console :: CONSOLE
-                        , ajax :: AJAX
-                        , err :: EXCEPTION
-                        | eff
-                        ) Unit
+
+handleChange :: forall eff.
+  JQuery
+  -> JQuery
+  -> JQueryEvent
+  -> JQuery
+  -> Eff ( dom :: DOM
+         , console :: CONSOLE
+         , ajax :: AJAX
+         , err :: EXCEPTION
+         | eff
+         ) Unit
+handleChange input greeting _ _ = unsafePartial do
+  val <- getValue input
+  for_ (runExcept (read val)) \name -> do
+    log $ "Name changed to " <> name
+    setText ("Hello, " <> name) greeting
+
+main :: forall eff.
+  Eff ( dom :: DOM
+      , console :: CONSOLE
+      , ajax :: AJAX
+      , err :: EXCEPTION
+      | eff
+      ) Unit
 main = do
   ready $ do
-    launchAff $ do
-      res <- affjax $ defaultRequest { url = "http://ip.jsontest.com/", method = Left GET }
-      liftEff $ log $ "GET /api response2: " <> res.response
+    sendDataOnServer
 
     -- Get the document body
     body <- body
@@ -53,20 +80,3 @@ main = do
 
     -- Listen for change events on the text box
     on "change" (handleChange input greeting) input
-  where
-    handleChange
-      :: JQuery
-      -> JQuery
-      -> JQueryEvent
-      -> JQuery
-      -> Eff ( dom :: DOM
-             , console :: CONSOLE
-             , ajax :: AJAX
-             , err :: EXCEPTION
-             | eff
-             ) Unit
-    handleChange input greeting _ _ = unsafePartial do
-      val <- getValue input
-      for_ (runExcept (read val)) \name -> do
-        log $ "Name changed to " <> name
-        setText ("Hello, " <> name) greeting
